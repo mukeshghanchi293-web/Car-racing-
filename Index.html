@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<title>Car Racing</title>
+<style>
+  :root{
+    --bg:#1a1a2e; --road:#333; --line:#fff; --accent:#4cd964;
+    box-sizing:border-box;
+    padding-top: env(safe-area-inset-top,0px);
+    padding-bottom: env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font-family:-apple-system,Arial,sans-serif;}
+  #wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column;}
+  #score{
+    text-align:center;color:#fff;font-size:1.8em;font-weight:bold;
+    padding:10px 0; text-shadow:0 2px 4px rgba(0,0,0,.5); z-index:2;
+  }
+  #game{flex:1;width:100%;display:block;background:var(--road);}
+  #controls{
+    position:absolute; bottom:0; left:0; right:0;
+    display:flex; justify-content:space-between; padding:20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom,0px));
+    pointer-events:none;
+  }
+  .btn{
+    width:80px;height:80px;border-radius:50%;
+    background:rgba(255,255,255,.15); border:2px solid rgba(255,255,255,.3);
+    color:#fff; font-size:2em; display:flex; align-items:center; justify-content:center;
+    pointer-events:auto; user-select:none; -webkit-user-select:none;
+  }
+  .btn:active{background:rgba(255,255,255,.3);}
+  #overlay{
+    position:absolute; inset:0; background:rgba(0,0,0,.75);
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; text-align:center; z-index:5; gap:16px;
+  }
+  #overlay h1{margin:0;font-size:2em;}
+  #restart{
+    padding:14px 28px; font-size:1.1em; border:none; border-radius:30px;
+    background:var(--accent); color:#0a0a0a; font-weight:bold;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="score">Score: 0</div>
+  <canvas id="game"></canvas>
+  <div id="controls">
+    <div class="btn" id="left">◀</div>
+    <div class="btn" id="right">▶</div>
+  </div>
+  <div id="overlay">
+    <h1>Crashed!</h1>
+    <div id="finalScore"></div>
+    <button id="restart">Play Again</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const overlay = document.getElementById('overlay');
+const finalScoreEl = document.getElementById('finalScore');
+
+function resize(){
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+}
+window.addEventListener('resize', resize);
+
+let lanes, laneWidth, playerLane, playerCar, obstacles, score, speed, running, lineOffset;
+
+function initGame(){
+  resize();
+  lanes = 3;
+  laneWidth = canvas.width / lanes;
+  playerLane = 1;
+  playerCar = { w: laneWidth*0.5, h: canvas.height*0.13 };
+  obstacles = [];
+  score = 0;
+  speed = canvas.height * 0.006;
+  running = true;
+  lineOffset = 0;
+  overlay.style.display = 'none';
+  spawnTimer = 0;
+}
+
+let spawnTimer = 0;
+function laneX(lane){
+  return lane*laneWidth + laneWidth/2 - playerCar.w/2;
+}
+
+function spawnObstacle(){
+  const lane = Math.floor(Math.random()*lanes);
+  const isRed = Math.random() < 0.5;
+  obstacles.push({
+    lane, y: -canvas.height*0.15,
+    w: laneWidth*0.5, h: canvas.height*0.13,
+    color: isRed ? '#e6193f' : '#1a9e50',
+    accent: isRed ? '#f5a8b5' : '#a8e6bf'
+  });
+}
+
+function drawCar(x, y, w, h, color, accent){
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = accent;
+  ctx.fillRect(x + w*0.15, y + h*0.12, w*0.7, h*0.22);
+}
+
+function update(){
+  if(!running) return;
+  lineOffset = (lineOffset + speed*1.5) % (canvas.height*0.12);
+
+  spawnTimer++;
+  if(spawnTimer > Math.max(35, 70 - score)){
+    spawnObstacle();
+    spawnTimer = 0;
+  }
+
+  for(let o of obstacles){ o.y += speed*4; }
+  obstacles = obstacles.filter(o => o.y < canvas.height + 50);
+
+  const px = laneX(playerLane);
+  const py = canvas.height - playerCar.h - canvas.height*0.06;
+  for(let o of obstacles){
+    const ox = laneX(o.lane);
+    if(o.y + o.h > py && o.y < py + playerCar.h && o.lane === playerLane){
+      if(ox < px + playerCar.w && ox + o.w > px){
+        running = false;
+        finalScoreEl.textContent = 'Score: ' + score;
+        overlay.style.display = 'flex';
+      }
+    }
+    if(!o.scored && o.y > py){
+      o.scored = true;
+      score++;
+      speed += 0.03;
+    }
+  }
+  scoreEl.textContent = 'Score: ' + score;
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([canvas.height*0.06, canvas.height*0.06]);
+  for(let i=1;i<lanes;i++){
+    ctx.beginPath();
+    ctx.moveTo(i*laneWidth, -canvas.height*0.12 + lineOffset);
+    ctx.lineTo(i*laneWidth, canvas.height + canvas.height*0.12);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  for(let o of obstacles){
+    drawCar(laneX(o.lane), o.y, o.w, o.h, o.color, o.accent);
+  }
+
+  const px = laneX(playerLane);
+  const py = canvas.height - playerCar.h - canvas.height*0.06;
+  drawCar(px, py, playerCar.w, playerCar.h, '#2a6df5', '#a8c8ff');
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('left').addEventListener('click', ()=>{
+  if(running && playerLane > 0) playerLane--;
+});
+document.getElementById('right').addEventListener('click', ()=>{
+  if(running && playerLane < lanes-1) playerLane++;
+});
+document.getElementById('restart').addEventListener('click', initGame);
+
+window.addEventListener('keydown', e=>{
+  if(e.key === 'ArrowLeft' && running && playerLane > 0) playerLane--;
+  if(e.key === 'ArrowRight' && running && playerLane < lanes-1) playerLane++;
+});
+
+initGame();
+loop();
+</script>
+</body>
+  </html>
